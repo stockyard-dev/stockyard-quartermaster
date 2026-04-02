@@ -1,10 +1,23 @@
 package store
-import("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
-type DB struct{*sql.DB}
-type Item struct{ID int64 `json:"id"`;Name string `json:"name"`;Category string `json:"category"`;Brand string `json:"brand"`;Model string `json:"model"`;SerialNumber string `json:"serial_number"`;PurchaseDate string `json:"purchase_date"`;PurchasePriceCents int64 `json:"purchase_price_cents"`;CurrentValueCents int64 `json:"current_value_cents"`;WarrantyExpiry string `json:"warranty_expiry"`;Location string `json:"location"`;Notes string `json:"notes"`;CreatedAt time.Time `json:"created_at"`}
-func Open(d string)(*DB,error){os.MkdirAll(d,0755);dsn:=filepath.Join(d,"quartermaster.db")+"?_journal_mode=WAL&_busy_timeout=5000";db,err:=sql.Open("sqlite",dsn);if err!=nil{return nil,fmt.Errorf("open: %w",err)};db.SetMaxOpenConns(1);migrate(db);return &DB{db},nil}
-func migrate(db *sql.DB){db.Exec(`CREATE TABLE IF NOT EXISTS items(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,category TEXT DEFAULT 'other',brand TEXT DEFAULT '',model TEXT DEFAULT '',serial_number TEXT DEFAULT '',purchase_date TEXT DEFAULT '',purchase_price_cents INTEGER DEFAULT 0,current_value_cents INTEGER DEFAULT 0,warranty_expiry TEXT DEFAULT '',location TEXT DEFAULT '',notes TEXT DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)}
-func(db *DB)Create(i *Item)error{res,err:=db.Exec(`INSERT INTO items(name,category,brand,model,serial_number,purchase_date,purchase_price_cents,current_value_cents,warranty_expiry,location,notes)VALUES(?,?,?,?,?,?,?,?,?,?,?)`,i.Name,i.Category,i.Brand,i.Model,i.SerialNumber,i.PurchaseDate,i.PurchasePriceCents,i.CurrentValueCents,i.WarrantyExpiry,i.Location,i.Notes);if err!=nil{return err};i.ID,_=res.LastInsertId();return nil}
-func(db *DB)List(q,category string)([]Item,error){base:=`SELECT id,name,category,brand,model,serial_number,purchase_date,purchase_price_cents,current_value_cents,warranty_expiry,location,notes,created_at FROM items WHERE 1=1`;args:=[]interface{}{};if q!=""{base+=` AND (name LIKE ? OR brand LIKE ? OR model LIKE ?)`;args=append(args,"%"+q+"%","%"+q+"%","%"+q+"%")};if category!=""{base+=` AND category=?`;args=append(args,category)};base+=` ORDER BY category,name`;rows,err:=db.Query(base,args...);if err!=nil{return nil,err};defer rows.Close();var out[]Item;for rows.Next(){var i Item;rows.Scan(&i.ID,&i.Name,&i.Category,&i.Brand,&i.Model,&i.SerialNumber,&i.PurchaseDate,&i.PurchasePriceCents,&i.CurrentValueCents,&i.WarrantyExpiry,&i.Location,&i.Notes,&i.CreatedAt);out=append(out,i)};return out,nil}
-func(db *DB)Delete(id int64){db.Exec(`DELETE FROM items WHERE id=?`,id)}
-func(db *DB)Stats()(map[string]interface{},error){var total int;var value int64;db.QueryRow(`SELECT COUNT(*),COALESCE(SUM(current_value_cents),0) FROM items`).Scan(&total,&value);return map[string]interface{}{"items":total,"total_value_cents":value},nil}
+import ("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
+type DB struct{db *sql.DB}
+type Item struct{
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	Status string `json:"status"`
+	Category string `json:"category"`
+	Tags string `json:"tags"`
+	CreatedAt string `json:"created_at"`
+}
+func Open(d string)(*DB,error){if err:=os.MkdirAll(d,0755);err!=nil{return nil,err};db,err:=sql.Open("sqlite",filepath.Join(d,"quartermaster.db")+"?_journal_mode=WAL&_busy_timeout=5000");if err!=nil{return nil,err}
+db.Exec(`CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT DEFAULT '',status TEXT DEFAULT 'active',category TEXT DEFAULT '',tags TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')))`)
+return &DB{db:db},nil}
+func(d *DB)Close()error{return d.db.Close()}
+func genID()string{return fmt.Sprintf("%d",time.Now().UnixNano())}
+func now()string{return time.Now().UTC().Format(time.RFC3339)}
+func(d *DB)Create(e *Item)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO items(id,name,description,status,category,tags,created_at)VALUES(?,?,?,?,?,?,?)`,e.ID,e.Name,e.Description,e.Status,e.Category,e.Tags,e.CreatedAt);return err}
+func(d *DB)Get(id string)*Item{var e Item;if d.db.QueryRow(`SELECT id,name,description,status,category,tags,created_at FROM items WHERE id=?`,id).Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt)!=nil{return nil};return &e}
+func(d *DB)List()[]Item{rows,_:=d.db.Query(`SELECT id,name,description,status,category,tags,created_at FROM items ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Item;for rows.Next(){var e Item;rows.Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM items WHERE id=?`,id);return err}
+func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&n);return n}
