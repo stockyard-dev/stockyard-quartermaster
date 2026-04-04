@@ -37,6 +37,7 @@ patch.PurchaseDate=existing.PurchaseDate};if patch.Condition==""{
 patch.Condition=existing.Condition};if patch.SerialNumber==""{
 patch.SerialNumber=existing.SerialNumber};if patch.Notes==""{
 patch.Notes=existing.Notes}
+    if patch.Quantity==0{patch.Quantity=existing.Quantity};if patch.PurchasePrice==0{patch.PurchasePrice=existing.PurchasePrice}
     s.db.Update(&patch);wj(w,200,s.db.Get(patch.ID))
 }
 func(s *Server)del(w http.ResponseWriter,r *http.Request){s.db.Delete(r.PathValue("id"));wj(w,200,map[string]string{"deleted":"ok"})}
